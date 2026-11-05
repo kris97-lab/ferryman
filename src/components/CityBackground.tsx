@@ -49,7 +49,8 @@ function createScene(canvas: HTMLCanvasElement) {
   const limbY = (x: number) => limb.cy - Math.sqrt(Math.max(0, limb.r * limb.r - (x - limb.cx) ** 2))
 
   function build() {
-    dpr = Math.min(window.devicePixelRatio || 1, 1.5)
+    const weak = lowPower || window.innerWidth < 768 || (navigator.hardwareConcurrency || 8) <= 4
+    dpr = Math.min(window.devicePixelRatio || 1, weak ? 1 : 1.5)
     w = window.innerWidth
     h = window.innerHeight
     canvas.width = w * dpr
@@ -337,7 +338,7 @@ function createScene(canvas: HTMLCanvasElement) {
     }
 
     // --- traffic ---
-    ships = Array.from({ length: 14 }, () => newShip(R, true))
+    ships = Array.from({ length: w < 768 ? 7 : 14 }, () => newShip(R, true))
   }
 
   function newShip(R: () => number, anywhere = false): Ship {
@@ -378,9 +379,20 @@ function createScene(canvas: HTMLCanvasElement) {
   }
 
   let last = performance.now()
+  // Adaptive quality: if the first ~90 frames average under ~35fps, rebuild at 1x.
+  let lowPower = false
+  let sampled = 0, slowTime = 0
   const R = rng(99)
   function frame(now: number) {
     const dt = Math.min(0.05, (now - last) / 1000)
+    if (!lowPower && sampled < 90) {
+      sampled++
+      slowTime += now - last
+      if (sampled === 90 && slowTime / 90 > 28 && dpr > 1) {
+        lowPower = true
+        build()
+      }
+    }
     last = now
     const t = now / 1000
     mx += (tx - mx) * 0.04

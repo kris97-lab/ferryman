@@ -1,13 +1,7 @@
 import { BigNumber, Contract, utils, providers } from 'ethers'
-import {
-  ChildTransactionReceipt,
-  ParentTransactionReceipt,
-  ChildToParentMessageStatus,
-  ParentToChildMessageStatus,
-  EthDepositMessageStatus,
-} from '@arbitrum/sdk'
 import { ADDR, ABI, ELYSIUM, HYPEREVM } from '../config'
 import { rpc, multicall, getLogsChunked, signerOn } from './chain'
+import { loadSdk } from './sdk'
 
 const retryableIface = new utils.Interface(ABI.arbRetryableTx)
 const arbSysIface = new utils.Interface([
@@ -210,9 +204,10 @@ export type Withdrawal = {
 }
 
 const W_STATUS: Record<number, WithdrawalStatus> = {
-  [ChildToParentMessageStatus.UNCONFIRMED]: 'waiting',
-  [ChildToParentMessageStatus.CONFIRMED]: 'claimable',
-  [ChildToParentMessageStatus.EXECUTED]: 'claimed',
+  // ChildToParentMessageStatus: UNCONFIRMED, CONFIRMED, EXECUTED
+  0: 'waiting',
+  1: 'claimable',
+  2: 'claimed',
 }
 
 async function withdrawalsFromReceipt(receipt: providers.TransactionReceipt): Promise<Withdrawal[]> {
@@ -221,6 +216,7 @@ async function withdrawalsFromReceipt(receipt: providers.TransactionReceipt): Pr
 }
 
 async function sdkStatus(receipt: providers.TransactionReceipt, index: number): Promise<WithdrawalStatus> {
+  const { ChildTransactionReceipt } = await loadSdk()
   const msgs = await new ChildTransactionReceipt(receipt).getChildToParentMessages(rpc().hyperevm)
   return W_STATUS[await msgs[index].status(rpc().elysium)] ?? 'waiting'
 }
@@ -249,6 +245,7 @@ function parseWithdrawals(receipt: providers.TransactionReceipt): Withdrawal[] {
 export async function claimWithdrawal(txHash: string, index: number) {
   const signer = await signerOn(HYPEREVM.chainId)
   const receipt = await rpc().elysium.getTransactionReceipt(txHash)
+  const { ChildTransactionReceipt } = await loadSdk()
   const msgs = await new ChildTransactionReceipt(receipt).getChildToParentMessages(signer)
   const tx = await msgs[index].execute(rpc().elysium)
   return tx.wait()
@@ -295,6 +292,7 @@ export async function diagnose(hash: string): Promise<Diagnosis> {
     const base = { chain: 'hyperevm' as const, hash, tickets: [] as Ticket[], pendingTickets: 0, withdrawals: [], ethDeposits: [] as EthDeposit[] }
     const outboxExec = hRc.logs.some((l) => l.address.toLowerCase() === ADDR.hyperevm.outbox.toLowerCase())
     if (outboxExec) return { ...base, claimedWithdrawal: true, note: 'This transaction claimed a withdrawal from Elysium.' }
+    const { ParentTransactionReceipt, ParentToChildMessageStatus, EthDepositMessageStatus } = await loadSdk()
     const prc = new ParentTransactionReceipt(hRc)
     const [msgs, eth] = await Promise.all([prc.getParentToChildMessages(E).catch(() => []), prc.getEthDeposits(E).catch(() => [])])
     const tickets: Ticket[] = []

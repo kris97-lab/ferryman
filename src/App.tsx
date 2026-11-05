@@ -33,9 +33,10 @@ export default function App() {
   const [account, setAccount] = useState<string | null>(null)
   const [pulse, setPulse] = useState<{ stuck: number; created: number; minutes: number } | null>(null)
   const [settings, setSettings] = useState(false)
+  const [pulseFailed, setPulseFailed] = useState(false)
 
   useEffect(() => {
-    networkPulse(15).then(setPulse).catch(() => {})
+    networkPulse(15).then(setPulse).catch(() => setPulseFailed(true))
     injected()?.request({ method: 'eth_accounts' }).then((a: string[]) => a[0] && setAccount(a[0])).catch(() => {})
     injected()?.on?.('accountsChanged', (a: string[]) => setAccount(a[0] ?? null))
   }, [])
@@ -117,7 +118,7 @@ export default function App() {
                 Elysium testnet · <b>{pulse.stuck.toLocaleString()}</b> of {pulse.created.toLocaleString()} bridge messages stuck in the last {pulse.minutes} min
               </span>
             ) : (
-              <span>Elysium testnet · checking network pulse…</span>
+              <span>Elysium testnet · {pulseFailed ? 'live stats unavailable right now' : 'checking network pulse…'}</span>
             )}
           </div>
           <h1>

@@ -24,9 +24,22 @@ npm run dev
 ```
 
 Stack: Vite + React + TypeScript, ethers v5, `@arbitrum/sdk` (Elysium is registered as a custom
-Orbit network with a BoLD rollup). Contract addresses live in `src/config.ts`.
+Orbit network with a BoLD rollup, loaded lazily). Contract addresses live in `src/config.ts`.
+
+## Deploy (Vercel)
+
+1. Push the repo to GitHub and import it in Vercel (framework is detected from `vercel.json`).
+2. In Project → Settings → Environment Variables set `ELYSIUM_RPC_URL` and `HYPEREVM_RPC_URL`
+   (e.g. Alchemy endpoints with your key). See `.env.example`.
+3. Deploy. In production the app reads through `/api/rpc/{elysium,hyperevm}` — an edge function that
+   keeps the keys server-side and only forwards read-only JSON-RPC methods. Wallet transactions go
+   straight from the user's wallet and never touch the proxy.
+
+`vercel.json` also sets security headers, including `frame-ancestors 'none'` so the app can't be
+embedded in another site (clickjacking protection for a page that asks for wallet signatures).
 
 Notes
-- The public HyperEVM RPC caps `eth_getLogs` at 1000 blocks and rate-limits; set your own in Settings.
+- The public HyperEVM RPC caps `eth_getLogs` at 1000 blocks and rate-limits; the proxy with your own
+  endpoint fixes this. Users can still point at their own RPC in Settings.
 - Elysium's RPC caps a `eth_getLogs` response at 10k logs; scans shrink their window automatically.
 - Fingerprint checks scan bytecode for function selectors — they are heuristics, not proofs.

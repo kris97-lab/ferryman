@@ -1,5 +1,4 @@
 import { providers, Contract } from 'ethers'
-import { registerCustomArbitrumNetwork } from '@arbitrum/sdk'
 import { ELYSIUM, HYPEREVM, ADDR, ABI } from '../config'
 
 const RPC_KEY = 'ferryman:rpc'
@@ -23,57 +22,27 @@ export function saveRpcOverrides(o: RpcOverrides) {
   current = makeProviders(o)
 }
 
+// In production reads go through our /api/rpc proxy (keeps provider keys
+// server-side); in dev they hit the public endpoints directly.
+const viaProxy = !!(import.meta as any).env?.PROD && typeof location !== 'undefined'
+const defaultRpc = (chain: 'elysium' | 'hyperevm', publicUrl: string) => (viaProxy ? `${location.origin}/api/rpc/${chain}` : publicUrl)
+
 function makeProviders(o: RpcOverrides) {
   return {
-    elysium: new providers.StaticJsonRpcProvider(o.elysium || ELYSIUM.rpc, ELYSIUM.chainId),
-    hyperevm: new providers.StaticJsonRpcProvider(o.hyperevm || HYPEREVM.rpc, HYPEREVM.chainId),
+    elysium: new providers.StaticJsonRpcProvider(o.elysium || defaultRpc('elysium', ELYSIUM.rpc), ELYSIUM.chainId),
+    hyperevm: new providers.StaticJsonRpcProvider(o.hyperevm || defaultRpc('hyperevm', HYPEREVM.rpc), HYPEREVM.chainId),
   }
 }
 
 let current = makeProviders(loadRpcOverrides())
 export const rpc = () => current
 
-const ZERO = '0x0000000000000000000000000000000000000000'
-
-// Elysium is an Orbit chain with native HYPE gas on a HyperEVM parent, so the
-// stock Arbitrum SDK works once the network is registered. The rollup is BoLD.
-registerCustomArbitrumNetwork({
-  name: ELYSIUM.name,
-  chainId: ELYSIUM.chainId,
-  parentChainId: HYPEREVM.chainId,
-  confirmPeriodBlocks: 10,
-  isCustom: true,
-  isTestnet: true,
-  isBold: true,
-  ethBridge: {
-    bridge: ADDR.hyperevm.bridge,
-    inbox: ADDR.hyperevm.inbox,
-    sequencerInbox: ADDR.hyperevm.sequencerInbox,
-    outbox: ADDR.hyperevm.outbox,
-    rollup: ADDR.hyperevm.rollup,
-  },
-  tokenBridge: {
-    parentGatewayRouter: ADDR.hyperevm.gatewayRouter,
-    childGatewayRouter: ADDR.elysium.gatewayRouter,
-    parentErc20Gateway: ADDR.hyperevm.erc20Gateway,
-    childErc20Gateway: ADDR.elysium.erc20Gateway,
-    parentCustomGateway: ZERO,
-    childCustomGateway: ZERO,
-    parentWethGateway: ZERO,
-    childWethGateway: ZERO,
-    parentWeth: ZERO,
-    childWeth: ZERO,
-    parentMultiCall: ZERO,
-    childMultiCall: ADDR.elysium.multicall3,
-  },
-})
-
 /** Multicall3.aggregate3 on Elysium; returns null for failed calls. */
 export async function multicall(calls: { target: string; data: string }[]): Promise<(string | null)[]> {
   const mc = new Contract(ADDR.elysium.multicall3, ABI.multicall3, rpc().elysium)
   const out: (string | null)[] = []
-  for (let i = 0; i < calls.length; i += 600) {
-    const chunk = calls.slice(i, i + 600)
+  for (let i = 0; i < calls.length; i += 300) {
+    const chunk = calls.slice(i, i + 300)
     const res = await mc.callStatic.aggregate3(chunk.map((c) => ({ target: c.target, allowFailure: true, callData: c.data })))
     for (const r of res) out.push(r.success ? r.returnData : null)
   }
