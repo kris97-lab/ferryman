@@ -3,12 +3,15 @@
 // writes go straight from the user's wallet, never through here.
 //
 // Env: ELYSIUM_RPC_URL, HYPEREVM_RPC_URL (fall back to the public endpoints).
+// eth_getLogs uses *_LOGS_RPC_URL, defaulting to the public endpoint: provider
+// free tiers cap log ranges (Alchemy: 10 blocks = 1 s of Elysium history),
+// while the app's scans need ranges of 50k+ blocks.
 
 export const config = { runtime: 'edge' }
 
-const UPSTREAM: Record<string, { env: string; fallback: string }> = {
-  elysium: { env: 'ELYSIUM_RPC_URL', fallback: 'https://testnet-rpc.elysium.kinetiq.xyz' },
-  hyperevm: { env: 'HYPEREVM_RPC_URL', fallback: 'https://rpc.hyperliquid-testnet.xyz/evm' },
+const UPSTREAM: Record<string, { env: string; logsEnv: string; fallback: string }> = {
+  elysium: { env: 'ELYSIUM_RPC_URL', logsEnv: 'ELYSIUM_LOGS_RPC_URL', fallback: 'https://testnet-rpc.elysium.kinetiq.xyz' },
+  hyperevm: { env: 'HYPEREVM_RPC_URL', logsEnv: 'HYPEREVM_LOGS_RPC_URL', fallback: 'https://rpc.hyperliquid-testnet.xyz/evm' },
 }
 
 const ALLOWED = new Set([
@@ -67,7 +70,9 @@ export default async function handler(req: Request): Promise<Response> {
     return json({ jsonrpc: '2.0', id: blocked.id ?? null, error: { code: -32601, message: `method not allowed: ${String(blocked.method)}` } }, 403)
   }
 
-  const url = (globalThis as any).process?.env?.[target.env] || target.fallback
+  const env = (globalThis as any).process?.env ?? {}
+  const wantsLogs = calls.some((c) => c.method === 'eth_getLogs')
+  const url = (wantsLogs ? env[target.logsEnv] : env[target.env]) || target.fallback
   const upstream = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: raw })
   return new Response(upstream.body, {
     status: upstream.status,

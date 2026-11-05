@@ -30,7 +30,8 @@ Orbit network with a BoLD rollup, loaded lazily). Contract addresses live in `sr
 
 1. Push the repo to GitHub and import it in Vercel (framework is detected from `vercel.json`).
 2. In Project → Settings → Environment Variables set `ELYSIUM_RPC_URL` and `HYPEREVM_RPC_URL`
-   (e.g. Alchemy endpoints with your key). See `.env.example`.
+   (e.g. Alchemy endpoints with your key). See `.env.example`. `eth_getLogs` goes to the public RPC
+   unless `*_LOGS_RPC_URL` is set — Alchemy's free tier caps log queries at 10 blocks.
 3. Deploy. In production the app reads through `/api/rpc/{elysium,hyperevm}` — an edge function that
    keeps the keys server-side and only forwards read-only JSON-RPC methods. Wallet transactions go
    straight from the user's wallet and never touch the proxy.
